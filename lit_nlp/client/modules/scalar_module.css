@@ -26,6 +26,13 @@
   stroke: #fff;
 }
 
+.reference-point {
+  r: 6px;
+  fill-opacity: 0.8;
+  stroke-width: 2px;
+  stroke: var(--lit-cyea-500);
+}
+
 .point {
   r: 4px;
   opacity: .25;
