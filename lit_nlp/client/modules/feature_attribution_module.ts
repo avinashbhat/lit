@@ -20,17 +20,19 @@
 // tslint:disable:no-new-decorators
 import {html} from 'lit';
 import {customElement} from 'lit/decorators';
+import {styleMap} from 'lit/directives/style-map';
 import {computed, observable} from 'mobx';
 
 import {app} from '../core/app';
 import {FacetsChange} from '../core/faceting_control';
 import {LitModule} from '../core/lit_module';
-import {TableData} from '../elements/table';
+import {SortableTemplateResult, TableData} from '../elements/table';
 import {IndexedInput, ModelInfoMap} from '../lib/types';
 import * as utils from '../lib/utils';
 import {findSpecKeys} from '../lib/utils';
-import {AppState, GroupService} from '../services/services';
+import {SignedSalienceCmap} from '../services/color_service';
 import {NumericFeatureBins} from '../services/group_service';
+import {AppState, GroupService} from '../services/services';
 
 import {styles as sharedStyles} from '../lib/shared_styles.css';
 import {styles} from './feature_attribution_module.css';
@@ -83,7 +85,7 @@ export class FeatureAttributionModule extends LitModule {
     return Object.values(modelSpecs).some(modelInfo => {
       // The model directly outputs FeatureSalience
       const hasIntrinsicSalience =
-           findSpecKeys(modelInfo.spec.output, 'FeatureSalience').length > 0;
+          findSpecKeys(modelInfo.spec.output, 'FeatureSalience').length > 0;
 
       // At least one compatible interpreter outputs FeatureSalience
       const canDeriveSalience = modelInfo.interpreters.some(name => {
@@ -105,8 +107,10 @@ export class FeatureAttributionModule extends LitModule {
   // ---- Instance Properties ----
 
   private readonly groupService = app.getService(GroupService);
+  private readonly colorMap = new SignedSalienceCmap();
 
   @observable private startsOpen?: string;
+  @observable private isColored = false;
   @observable private features: string[] = [];
   @observable private bins: NumericFeatureBins = {};
   @observable private summaries: SummariesMap = {};
@@ -264,20 +268,26 @@ export class FeatureAttributionModule extends LitModule {
     return statsMap;
   }
 
-  private renderFacetControls() {
+  private renderSecondaryControls() {
+    const change = () => {this.isColored = !this.isColored;};
     const updateFacets = (event: CustomEvent<FacetsChange>) => {
       this.features = event.detail.features;
       this.bins = event.detail.bins;
     };
 
     // clang-format off
-    return html`<faceting-control @facets-change=${updateFacets}
-                                  contextName=${FeatureAttributionModule.title}>
-                </faceting-control>`;
+    return html`
+        <faceting-control @facets-change=${updateFacets}
+                          contextName=${FeatureAttributionModule.title}>
+        </faceting-control>
+        <span style="felx: 1 1 auto;"></span>
+        <lit-checkbox label="Heatmap" ?checked=${this.isColored}
+                      @change=${() => {change();}}>
+        </lit-checkbox>`;
     // clang-format on
   }
 
-  private renderSalienceControls() {
+  private renderPrimaryControls() {
     const change = (name: string) => {
       this.enabled[name] = !this.enabled[name];
     };
@@ -296,12 +306,40 @@ export class FeatureAttributionModule extends LitModule {
     // clang-format on
   }
 
+  private renderColoredCell(value: number): SortableTemplateResult {
+    const txtColor = this.colorMap.textCmap(value);
+    const bgColor = this.colorMap.bgCmap(value);
+    const styles = styleMap({
+      'width': '100%',
+      'height': '100%',
+      'padding': '0 2px',
+      'position': 'relative',
+      'color': txtColor,
+      'background-color': bgColor
+    });
+    const template = html`<div style=${styles}>${value.toFixed(4)}</div>`;
+    return {value, template};
+  }
+
   private renderTable(summary: AttributionStatsMap) {
-    const columnNames = ['field', 'min', 'median', 'max', 'mean'];
+    const columnNames = [
+      {name: 'field', rightAlign: false},
+      {name: 'min', rightAlign: true},
+      {name: 'median', rightAlign: true},
+      {name: 'max', rightAlign: true},
+      {name: 'mean', rightAlign: true}
+    ];
     const tableData: TableData[] =
         Object.entries(summary).map(([feature, stats]) => {
           const {min, median, max, mean} = stats;
-          return [feature, min, median, max, mean];
+          let fieldsArray: number[] | SortableTemplateResult[] =
+              [min, median, max, mean];
+
+          if (this.isColored) {
+            fieldsArray = fieldsArray.map(v => this.renderColoredCell(v));
+          }
+
+          return [feature, ...fieldsArray];
         });
 
     // clang-format off
@@ -325,8 +363,8 @@ export class FeatureAttributionModule extends LitModule {
     // clang-format off
     return html`
       <div class='module-container'>
-        <div class='module-toolbar'>${this.renderSalienceControls()}</div>
-        <div class='module-toolbar'>${this.renderFacetControls()}</div>
+        <div class='module-toolbar'>${this.renderPrimaryControls()}</div>
+        <div class='module-toolbar'>${this.renderSecondaryControls()}</div>
         <div class='module-results-area'>
           ${Object.entries(this.summaries)
             .sort()

@@ -1,5 +1,6 @@
 """🐧 TensorFlow Keras model for the Penguin dataset."""
-
+import random
+from lit_nlp.api import dtypes
 from lit_nlp.api import model as lit_model
 from lit_nlp.api import types as lit_types
 from lit_nlp.examples.datasets.penguin_data import VOCABS
@@ -47,7 +48,9 @@ class PenguinModel(lit_model.Model):
     adjusted_inputs = [convert_input(inp) for inp in inputs]
     model_output = self.model.predict(adjusted_inputs)
 
-    ret = [{'predicted_species': out} for out in model_output]
+    # pylint: disable=line-too-long
+    ret = [{'predicted_species': out, 'random_salience': dtypes.FeatureSalience({key: (random.random() * random.randint(-1, 1)) for key in self.input_spec().keys()})} for out in model_output]
+    # pylint: enable=line-too-long
     return ret
 
   def input_spec(self):
@@ -62,6 +65,7 @@ class PenguinModel(lit_model.Model):
 
   def output_spec(self):
     return {
+        'random_salience': lit_types.FeatureSalience(signed=False),
         'predicted_species':
             lit_types.MulticlassPreds(
                 parent='species', vocab=VOCABS['species'])
